@@ -1,0 +1,8 @@
+CREATE TABLE TODOS ( 
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES USERS(ID) ON DELETE CASCADE,
+    task TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (STATUS IN ('pending', 'completed')) DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
