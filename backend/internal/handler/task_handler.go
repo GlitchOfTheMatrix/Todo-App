@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/GlitchOfTheMatrix/Todo-App/backend/internal/middleware"
@@ -19,18 +20,27 @@ func NewTaskHandler(taskRepo *repository.TaskRepository) *TaskHandler {
 	return &TaskHandler{taskRepo: taskRepo}
 }
 
-// GetAll returns all tasks for the authenticated user.
-// GET /api/tasks
+// GetAll returns paginated tasks for the authenticated user.
+// GET /api/tasks?limit=50&offset=0
 func (h *TaskHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	userId := getUserIDFromContext(r)
 
-	tasks, err := h.taskRepo.GetAllByUserId(r.Context(), userId)
+	limit := parseQueryInt(r, "limit", 50)
+	offset := parseQueryInt(r, "offset", 0)
+
+	tasks, total, err := h.taskRepo.GetAllByUserId(r.Context(), userId, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch tasks")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, tasks)
+	writeJSON(w, http.StatusOK, models.PaginatedResponse{
+		Data:    tasks,
+		Total:   total,
+		Limit:   limit,
+		Offset:  offset,
+		HasMore: offset+len(tasks) < total,
+	})
 }
 
 // GetOne returns a single task by ID.
@@ -153,4 +163,17 @@ func parseTaskID(r *http.Request) (uuid.UUID, error) {
 // getUserIDFromContext extracts the authenticated user's UUID from context.
 func getUserIDFromContext(r *http.Request) uuid.UUID {
 	return middleware.GetUserID(r.Context())
+}
+
+// parseQueryInt extracts an integer query parameter, falling back to defaultVal.
+func parseQueryInt(r *http.Request, key string, defaultVal int) int {
+	v := r.URL.Query().Get(key)
+	if v == "" {
+		return defaultVal
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return defaultVal
+	}
+	return n
 }

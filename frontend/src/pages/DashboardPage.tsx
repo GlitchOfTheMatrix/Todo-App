@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { tasksApi } from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -13,20 +13,44 @@ export default function DashboardPage() {
   const [newTask, setNewTask] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [hasMore, setHasMore] = useState(false);
+  const [totalTasks, setTotalTasks] = useState(0);
+  const offsetRef = useRef(0);
+  const PAGE_SIZE = 50;
 
   const fetchTasks = useCallback(async () => {
     try {
-      const data = await tasksApi.getAll();
-      setTasks(data);
+      const res = await tasksApi.getAll(PAGE_SIZE, 0);
+      setTasks(res.data);
+      setHasMore(res.has_more);
+      setTotalTasks(res.total);
+      offsetRef.current = res.data.length;
     } catch {
       // silently fail
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await tasksApi.getAll(PAGE_SIZE, offsetRef.current);
+      setTasks((prev) => [...prev, ...res.data]);
+      setHasMore(res.has_more);
+      setTotalTasks(res.total);
+      offsetRef.current += res.data.length;
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore]);
 
   useEffect(() => {
     fetchTasks();
@@ -42,6 +66,8 @@ export default function DashboardPage() {
       const task = await tasksApi.create({ task: text });
       setTasks((prev) => [task, ...prev]);
       setNewTask('');
+      setTotalTasks((prev) => prev + 1);
+      offsetRef.current += 1;
     } catch {
       // handle error
     } finally {
@@ -63,6 +89,8 @@ export default function DashboardPage() {
     try {
       await tasksApi.delete(id);
       setTasks((prev) => prev.filter((t) => t.id !== id));
+      setTotalTasks((prev) => Math.max(0, prev - 1));
+      offsetRef.current = Math.max(0, offsetRef.current - 1);
     } catch {
       // handle error
     }
@@ -342,6 +370,20 @@ export default function DashboardPage() {
                 )}
               </div>
             ))
+          )}
+          {hasMore && (
+            <button
+              className={styles.btnLoadMore}
+              onClick={loadMore}
+              disabled={loadingMore}
+              id="load-more-btn"
+            >
+              {loadingMore ? (
+                <span className="spinner" />
+              ) : (
+                `Load More (${tasks.length} of ${totalTasks})`
+              )}
+            </button>
           )}
         </div>
       </main>

@@ -32,16 +32,37 @@ func (r *TaskRepository) Create(ctx context.Context, task *models.Task) error {
 	return nil
 }
 
-func (r *TaskRepository) GetAllByUserId(ctx context.Context, userId uuid.UUID) ([]models.Task, error) {
+// GetAllByUserId returns paginated tasks for a user.
+// limit=0 means use the default (50). offset is 0-based.
+func (r *TaskRepository) GetAllByUserId(ctx context.Context, userId uuid.UUID, limit, offset int) ([]models.Task, int, error) {
+	// Clamp limits
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Get total count for pagination metadata
+	countQuery := `SELECT COUNT(*) FROM todos WHERE user_id = $1`
+	var total int
+	if err := r.db.QueryRow(ctx, countQuery, userId).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("failed to count tasks: %w", err)
+	}
+
 	query := `
 		SELECT id, user_id, task, status, created_at, updated_at
 		FROM todos
 		WHERE user_id = $1
-		ORDER BY created_at DESC`
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3`
 
-	rows, err := r.db.Query(ctx, query, userId)
+	rows, err := r.db.Query(ctx, query, userId, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query tasks: %w", err)
+		return nil, 0, fmt.Errorf("failed to query tasks: %w", err)
 	}
 	defer rows.Close()
 
@@ -50,7 +71,7 @@ func (r *TaskRepository) GetAllByUserId(ctx context.Context, userId uuid.UUID) (
 		var task models.Task
 		err := rows.Scan(&task.Id, &task.UserId, &task.Task, &task.Status, &task.CreatedAt, &task.UpdatedAt)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan task: %w", err)
+			return nil, 0, fmt.Errorf("failed to scan task: %w", err)
 		}
 		tasks = append(tasks, task)
 	}
@@ -59,7 +80,7 @@ func (r *TaskRepository) GetAllByUserId(ctx context.Context, userId uuid.UUID) (
 		tasks = []models.Task{}
 	}
 
-	return tasks, nil
+	return tasks, total, nil
 }
 
 func (r *TaskRepository) GetById(ctx context.Context, id uuid.UUID, userId uuid.UUID) (*models.Task, error) {

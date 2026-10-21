@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/GlitchOfTheMatrix/Todo-App/backend/internal/config"
 	"github.com/GlitchOfTheMatrix/Todo-App/backend/internal/database"
@@ -27,14 +26,20 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Connect to database
+	// Connect to database with pool tuning
 	ctx := context.Background()
-	db, err := database.Connect(ctx, cfg.DatabaseUrl)
+	db, err := database.Connect(ctx, cfg.DatabaseUrl, &database.PoolConfig{
+		MaxConns:          cfg.DBMaxConns,
+		MinConns:          cfg.DBMinConns,
+		MaxConnLifetime:   cfg.DBMaxConnLifetime,
+		MaxConnIdleTime:   cfg.DBMaxConnIdleTime,
+		HealthCheckPeriod: cfg.DBHealthCheckPeriod,
+	})
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
-	log.Println("Connected to database")
+	log.Printf("Connected to database (pool: max=%d, min=%d)", cfg.DBMaxConns, cfg.DBMinConns)
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db)
@@ -44,16 +49,16 @@ func main() {
 	authHandler := handler.NewAuthHandler(userRepo, cfg.JWTSecret)
 	taskHandler := handler.NewTaskHandler(taskRepo)
 
-	// Setup router
-	r := router.New(authHandler, taskHandler, cfg.JWTSecret)
+	// Setup router with full middleware stack
+	r := router.New(authHandler, taskHandler, cfg, db)
 
-	// Create server
+	// Create server with production timeouts
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+		IdleTimeout:  cfg.IdleTimeout,
 	}
 
 	// Graceful shutdown
@@ -63,7 +68,7 @@ func main() {
 		<-sigChan
 
 		log.Println("Shutting down server...")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 
 		if err := server.Shutdown(shutdownCtx); err != nil {
@@ -71,7 +76,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("Server starting on port %s", cfg.Port)
+	log.Printf("Server starting on port %s (rate limit: %d rps, burst: %d)", cfg.Port, cfg.RateLimitRPS, cfg.RateLimitBurst)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server failed: %v", err)
 	}

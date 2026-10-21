@@ -25,3 +25,12 @@ type UpdateTaskRequest struct {
 	Task   *string `json:"task,omitempty"`
 	Status *string `json:"status,omitempty"`
 }
+
+// PaginatedResponse wraps any list response with pagination metadata.
+type PaginatedResponse struct {
+	Data       interface{} `json:"data"`
+	Total      int         `json:"total"`
+	Limit      int         `json:"limit"`
+	Offset     int         `json:"offset"`
+	HasMore    bool        `json:"has_more"`
+}

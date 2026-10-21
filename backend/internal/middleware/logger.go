@@ -6,7 +6,8 @@ import (
 	"time"
 )
 
-// Logger logs every request with method, path, status, and duration.
+// Logger logs every request with method, path, status, duration, and client IP
+// in a structured format suitable for log aggregation at scale.
 func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -14,7 +15,18 @@ func Logger(next http.Handler) http.Handler {
 		wrapped := &statusResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 		next.ServeHTTP(wrapped, r)
 
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, wrapped.statusCode, time.Since(start))
+		duration := time.Since(start)
+		ip := extractIP(r)
+
+		log.Printf(
+			`{"method":"%s","path":"%s","status":%d,"duration_ms":%d,"ip":"%s","user_agent":"%s"}`,
+			r.Method,
+			r.URL.Path,
+			wrapped.statusCode,
+			duration.Milliseconds(),
+			ip,
+			r.UserAgent(),
+		)
 	})
 }
 

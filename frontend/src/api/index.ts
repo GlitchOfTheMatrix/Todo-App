@@ -2,6 +2,7 @@ import type {
   AuthResponse,
   CreateTaskRequest,
   LoginRequest,
+  PaginatedResponse,
   RegisterRequest,
   Task,
   UpdateTaskRequest,
@@ -60,7 +61,8 @@ export const authApi = {
 
 // Tasks API
 export const tasksApi = {
-  getAll: () => request<Task[]>('/tasks'),
+  getAll: (limit = 50, offset = 0) =>
+    request<PaginatedResponse<Task>>(`/tasks?limit=${limit}&offset=${offset}`),
 
   getOne: (id: string) => request<Task>(`/tasks/${id}`),
 

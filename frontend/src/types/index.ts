@@ -39,3 +39,11 @@ export interface UpdateTaskRequest {
   task?: string;
   status?: 'pending' | 'completed';
 }
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
